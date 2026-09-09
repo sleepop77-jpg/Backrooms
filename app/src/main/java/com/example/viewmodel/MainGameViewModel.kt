@@ -296,4 +296,24 @@ class MainGameViewModel(application: Application) : AndroidViewModel(application
             return
         }
         if (phase == RunPhase.DAY_COMPLETED || phase == RunPhase.LOCKED_OUT || phase == RunPhase.DAY_OVER) return
-        st
+        studyTimerJob?.cancel()
+        graceTimerJob?.cancel()
+        viewModelScope.launch {
+            val current = _dayStats.value
+            val banked = current.bankedSeconds
+            val profile = settingsStore.snapshotProfile()
+            val note = "Run abandoned before 8:00:00. Level unchanged."
+            settingsStore.saveProfile(profile.copy(todayBanked = banked))
+            dao.upsert(DayRecord(dateKey = todayKey, bankedSeconds = banked, outcome = "INCOMPLETE", levelAfter = profile.level, note = note))
+            _dayStats.update {
+                it.copy(
+                    currentBlockSeconds = 0L,
+                    runPhase = RunPhase.DAY_OVER,
+                    mascotState = MascotState.IDLE,
+                    isBlacklistBreachGraceActive = false,
+                    killMessage = note
+                )
+            }
+        }
+    }
+}
