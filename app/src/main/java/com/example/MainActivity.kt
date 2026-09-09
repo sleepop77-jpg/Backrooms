@@ -22,59 +22,53 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.MainGameViewModel
 
 class MainActivity : ComponentActivity() {
+    private val viewModel: MainGameViewModel by viewModels()
 
-  private val viewModel: MainGameViewModel by viewModels()
-
-  override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-    enableEdgeToEdge()
-    setContent {
-      MyApplicationTheme {
-        Scaffold(
-          modifier = Modifier.fillMaxSize(),
-          containerColor = Color(0xFF14130C)
-        ) { innerPadding ->
-          BackroomsSurvivalApp(
-            viewModel = viewModel,
-            modifier = Modifier.padding(innerPadding)
-          )
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            MyApplicationTheme {
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    containerColor = Color(0xFF14130C)
+                ) { innerPadding ->
+                    BackroomsSurvivalApp(
+                        viewModel = viewModel,
+                        modifier = Modifier.padding(innerPadding)
+                    )
+                }
+            }
         }
-      }
     }
-  }
 }
 
 @Composable
 fun BackroomsSurvivalApp(
-  viewModel: MainGameViewModel,
-  modifier: Modifier = Modifier
+    viewModel: MainGameViewModel,
+    modifier: Modifier = Modifier
 ) {
-  val dayStats by viewModel.dayStats.collectAsState()
-
-  Column(
-    modifier = modifier
-      .fillMaxSize()
-      .background(Color(0xFF14130C))
-  ) {
-    // 2D Game Viewport (Surface/Canvas with Animated Mascot & Backrooms Level 0)
-    Box(
-      modifier = Modifier
-        .weight(1.2f)
-        .fillMaxSize()
+    val dayStats by viewModel.dayStats.collectAsState()
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFF14130C))
     ) {
-      BackroomsGameCanvas(dayStats = dayStats)
+        Box(
+            modifier = Modifier
+                .weight(1.2f)
+                .fillMaxSize()
+        ) {
+            BackroomsGameCanvas(dayStats = dayStats)
+        }
+        TerminalHud(
+            dayStats = dayStats,
+            onToggleBlock = { viewModel.toggleStudyBlock() },
+            onTriggerBreach = { viewModel.triggerBreachAlert() },
+            onSaveGrace = { viewModel.resolveGraceSaved() },
+            onResetRun = { viewModel.resetRun() },
+            onFastForwardHour = { viewModel.fastForwardHour(1L) },
+            modifier = Modifier.weight(1.0f)
+        )
     }
-
-    // Terminal HUD (Level stats, Streak, 15m block progress, breach controls)
-    TerminalHud(
-      dayStats = dayStats,
-      onToggleBlock = { viewModel.toggleStudyBlock() },
-      onTriggerBreach = { viewModel.triggerBreachAlert() },
-      onSaveGrace = { viewModel.resolveGraceSaved() },
-      onResetRun = { viewModel.resetRun() },
-      onFastForwardHour = { viewModel.fastForwardHour(1L) },
-      modifier = Modifier.weight(1.0f)
-    )
-  }
 }
-

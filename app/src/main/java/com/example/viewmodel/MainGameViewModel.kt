@@ -66,17 +66,8 @@ class MainGameViewModel(application: Application) : AndroidViewModel(application
         val phase = when (record.outcome) {
             "COMPLETE" -> RunPhase.DAY_COMPLETED
             "KILLED" -> RunPhase.BREACH_KILLED
-            "LOCKED_OUT" -> RunPhase.LOCKED_OUT
             "INCOMPLETE" -> RunPhase.DAY_OVER
             else -> RunPhase.NOT_STARTED
-        }
-        val windowLeft = DayClock.windowSecondsLeft(now, settings.dayStartMinutes).coerceAtLeast(0L)
-        var resolvedPhase = phase
-        var note = record.note
-        if (phase == RunPhase.NOT_STARTED && windowLeft <= 0L) {
-            note = "RUN LOCKED: Missed the 2-hour day launch window. No progress possible today."
-            dao.upsert(record.copy(outcome = "LOCKED_OUT", note = note))
-            resolvedPhase = RunPhase.LOCKED_OUT
         }
 
         _dayStats.update {
@@ -86,11 +77,10 @@ class MainGameViewModel(application: Application) : AndroidViewModel(application
                 shameBreaches = profile.shame,
                 bankedSeconds = banked,
                 currentBlockSeconds = 0L,
-                dayLaunchSecondsLeft = windowLeft,
                 doomscrollBudgetRemainingSec = settings.budgetMinutes * 60L,
-                runPhase = resolvedPhase,
-                mascotState = mascotFor(resolvedPhase),
-                killMessage = note
+                runPhase = phase,
+                mascotState = mascotFor(phase),
+                killMessage = record.note
             )
         }
     }
@@ -117,22 +107,11 @@ class MainGameViewModel(application: Application) : AndroidViewModel(application
             bootstrapDay()
             return
         }
-        when (_dayStats.value.runPhase) {
-            RunPhase.NOT_STARTED -> {
-                val windowLeft = DayClock.windowSecondsLeft(now, settings.dayStartMinutes).coerceAtLeast(0L)
-                _dayStats.update { it.copy(dayLaunchSecondsLeft = windowLeft) }
-                if (windowLeft <= 0L) {
-                    val note = "RUN LOCKED: Missed the 2-hour day launch window. No progress possible today."
-                    dao.upsert(DayRecord(dateKey = todayKey, bankedSeconds = 0L, outcome = "LOCKED_OUT", levelAfter = _dayStats.value.currentLevel, note = note))
-                    _dayStats.update { it.copy(runPhase = RunPhase.LOCKED_OUT, mascotState = MascotState.IDLE, killMessage = note) }
-                }
+        val phase = _dayStats.value.runPhase
+        if (phase == RunPhase.STUDY_ACTIVE || phase == RunPhase.ON_BREAK) {
+            if (DayClock.bedtimeSecondsLeft(now, settings.bedtimeMinutes) <= 0L) {
+                endDayIncomplete()
             }
-            RunPhase.STUDY_ACTIVE, RunPhase.ON_BREAK -> {
-                if (DayClock.bedtimeSecondsLeft(now, settings.bedtimeMinutes) <= 0L) {
-                    endDayIncomplete()
-                }
-            }
-            else -> Unit
         }
     }
 
@@ -295,7 +274,7 @@ class MainGameViewModel(application: Application) : AndroidViewModel(application
             _dayStats.update { it.copy(runPhase = RunPhase.DAY_OVER, mascotState = MascotState.IDLE) }
             return
         }
-        if (phase == RunPhase.DAY_COMPLETED || phase == RunPhase.LOCKED_OUT || phase == RunPhase.DAY_OVER) return
+        if (phase == RunPhase.DAY_COMPLETED || phase == RunPhase.DAY_OVER) return
         studyTimerJob?.cancel()
         graceTimerJob?.cancel()
         viewModelScope.launch {

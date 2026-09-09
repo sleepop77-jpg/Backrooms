@@ -24,13 +24,6 @@ fun BackroomsGameCanvas(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val mascotSheetBitmap = remember {
-        try {
-            BitmapFactory.decodeResource(context.resources, R.drawable.mascot_spritesheet)
-        } catch (e: Exception) {
-            null
-        }
-    }
     val wireframeBitmap = remember {
         try {
             BitmapFactory.decodeResource(context.resources, R.drawable.wireframe_entity)
@@ -38,11 +31,8 @@ fun BackroomsGameCanvas(
             null
         }
     }
-    val renderer = remember(mascotSheetBitmap, wireframeBitmap) {
-        BackroomsGameRenderer(
-            mascotSheetBitmap = mascotSheetBitmap,
-            wireframeBitmap = wireframeBitmap
-        )
+    val renderer = remember(wireframeBitmap) {
+        BackroomsGameRenderer(wireframeBitmap = wireframeBitmap)
     }
     var animTick by remember { mutableLongStateOf(0L) }
     LaunchedEffect(Unit) {

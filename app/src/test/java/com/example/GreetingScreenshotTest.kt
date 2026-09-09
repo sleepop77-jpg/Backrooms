@@ -20,34 +20,31 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = RobolectricDeviceQualifiers.Pixel8, sdk = [36])
 class GreetingScreenshotTest {
+    @get:Rule
+    val composeTestRule = createComposeRule()
 
-  @get:Rule val composeTestRule = createComposeRule()
-
-  @Test
-  fun greeting_screenshot() {
-    composeTestRule.setContent {
-      MyApplicationTheme {
-        TerminalHud(
-          dayStats = DayStats(
-            currentLevel = 0,
-            streakDays = 12,
-            almondWaterCans = 3,
-            shameBreaches = 1,
-            bankedSeconds = 7200L,
-            currentBlockSeconds = 2059L,
-            runPhase = RunPhase.STUDY_ACTIVE,
-            mascotState = MascotState.WALK
-          ),
-          onToggleBlock = {},
-          onTriggerBreach = {},
-          onSaveGrace = {},
-          onResetRun = {},
-          onFastForwardHour = {}
-        )
-      }
+    @Test
+    fun greeting_screenshot() {
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                TerminalHud(
+                    dayStats = DayStats(
+                        currentLevel = 0,
+                        streakDays = 12,
+                        shameBreaches = 1,
+                        bankedSeconds = 7200L,
+                        currentBlockSeconds = 2059L,
+                        runPhase = RunPhase.STUDY_ACTIVE,
+                        mascotState = MascotState.WALK
+                    ),
+                    onToggleBlock = {},
+                    onTriggerBreach = {},
+                    onSaveGrace = {},
+                    onResetRun = {},
+                    onFastForwardHour = {}
+                )
+            }
+        }
+        composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/greeting.png")
     }
-
-    composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/greeting.png")
-  }
 }
-

@@ -15,11 +15,8 @@ import kotlin.math.floor
 import kotlin.math.sin
 
 class BackroomsGameRenderer(
-    private val mascotSheetBitmap: Bitmap?,
     private val wireframeBitmap: Bitmap?
 ) {
-    private val spriteSheet = MascotSpriteSheet(mascotSheetBitmap)
-
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#FFD54F")
         textSize = 24f
@@ -71,12 +68,8 @@ class BackroomsGameRenderer(
         textSize = 40f
         textAlign = Paint.Align.CENTER
     }
-    private val floorPaints = Array(8) { i ->
-        Paint().apply { color = sectorFloor(i) }
-    }
-    private val roomFloorPaints = Array(8) { i ->
-        Paint().apply { color = sectorRoomFloor(i) }
-    }
+    private val floorPaints = Array(8) { i -> Paint().apply { color = sectorFloor(i) } }
+    private val roomFloorPaints = Array(8) { i -> Paint().apply { color = sectorRoomFloor(i) } }
 
     private fun sectorFloor(sector: Int): Int {
         val t = sector / 7f
@@ -227,58 +220,28 @@ class BackroomsGameRenderer(
     ) {
         val state = dayStats.mascotState
         val isMoving = (state == MascotState.WALK || state == MascotState.RUN)
-        val bobFreq = if (state == MascotState.RUN) 0.22f else 0.16f
-        val bobAmp = if (state == MascotState.RUN) 14f else 8f
-        val bobY = if (isMoving) -abs(sin(animTick * bobFreq) * bobAmp) else 0f
-        val jitterX = if (state == MascotState.PANIC || state == MascotState.GLITCH) {
-            ((animTick % 5) - 2) * 6f
-        } else 0f
         val feetY = centerY + 60f
-        val currentX = worldX + jitterX
-        val currentY = feetY + bobY
+        val bobShadow = if (isMoving) abs(sin(animTick * 0.25f)) * 6f else 0f
 
         val shadowPaint = Paint().apply {
             color = Color.argb(130, 0, 0, 0)
             style = Paint.Style.FILL
         }
-        val shadowW = if (isMoving) 90f - (bobY * 0.5f) else 100f
+        val shadowW = if (isMoving) 90f - bobShadow else 100f
         canvas.drawOval(
-            RectF(currentX - shadowW / 2f, feetY - 6f, currentX + shadowW / 2f, feetY + 16f),
+            RectF(worldX - shadowW / 2f, feetY - 6f, worldX + shadowW / 2f, feetY + 16f),
             shadowPaint
         )
 
-        val mascotDisplayH = 150f
-        canvas.save()
-        if (state == MascotState.RUN) canvas.rotate(6f, currentX, currentY)
-        if (state == MascotState.CROUCH) canvas.translate(0f, 14f)
-        if (mascotSheetBitmap != null && !mascotSheetBitmap.isRecycled) {
-            val srcRect = spriteSheet.getSourceRect(state, animTick)
-            val srcH = srcRect.height().toFloat().coerceAtLeast(1f)
-            val aspect = srcRect.width().toFloat() / srcH
-            val dw = (mascotDisplayH * aspect).coerceIn(80f, 240f)
-            val dstRect = RectF(
-                currentX - dw / 2f,
-                currentY - mascotDisplayH,
-                currentX + dw / 2f,
-                currentY
-            )
-            canvas.drawBitmap(mascotSheetBitmap, srcRect, dstRect, Paint(Paint.FILTER_BITMAP_FLAG))
-        } else {
-            val dw = 130f
-            val dstRect = RectF(
-                currentX - dw / 2f,
-                currentY - mascotDisplayH,
-                currentX + dw / 2f,
-                currentY
-            )
-            canvas.drawRoundRect(dstRect, 24f, 24f, Paint().apply { color = Color.parseColor("#FFD54F") })
-            canvas.drawRoundRect(
-                RectF(dstRect.left + 26f, dstRect.top + 24f, dstRect.right - 16f, dstRect.top + 60f),
-                10f, 10f,
-                Paint().apply { color = Color.parseColor("#15140D") }
-            )
-        }
-        canvas.restore()
+        MascotPainter.draw(
+            canvas = canvas,
+            x = worldX,
+            feetY = feetY,
+            height = 150f,
+            state = state,
+            animTick = animTick,
+            facingRight = true
+        )
 
         val badgePaint = Paint().apply { color = Color.parseColor("#CC12110B") }
         val badgeBorder = Paint().apply {
@@ -286,17 +249,14 @@ class BackroomsGameRenderer(
             style = Paint.Style.STROKE
             strokeWidth = 2f
         }
-        val bRect = RectF(
-            currentX - 50f,
-            currentY - mascotDisplayH - 40f,
-            currentX + 50f,
-            currentY - mascotDisplayH - 10f
-        )
+        val bRect = RectF(worldX - 50f, feetY - 190f, worldX + 50f, feetY - 160f)
         canvas.drawRect(bRect, badgePaint)
         canvas.drawRect(bRect, badgeBorder)
         textPaint.textSize = 18f
         textPaint.color = Color.parseColor("#FFD54F")
-        canvas.drawText("PLAYER", currentX, currentY - mascotDisplayH - 18f, textPaint)
+        textPaint.textAlign = Paint.Align.CENTER
+        canvas.drawText("PLAYER", worldX, feetY - 168f, textPaint)
+        textPaint.textAlign = Paint.Align.LEFT
     }
 
     private fun drawWireframeLunge(
@@ -364,18 +324,12 @@ class BackroomsGameRenderer(
         textPaint.textSize = 20f
         textPaint.color = Color.parseColor("#FFD54F")
         textPaint.textAlign = Paint.Align.LEFT
-        canvas.drawText(
-            "LEVEL ${dayStats.currentLevel}: SECTOR 0$sector / 08",
-            35f, 48f, textPaint
-        )
+        canvas.drawText("LEVEL ${dayStats.currentLevel}: SECTOR 0$sector / 08", 35f, 48f, textPaint)
         val tRect = RectF(20f, 75f, 430f, 115f)
         canvas.drawRect(tRect, sectorBadgePaint)
         canvas.drawRect(tRect, sectorBorderPaint)
         textPaint.textSize = 17f
-        canvas.drawText(
-            String.format("TREK: %.2f / 20.74 km", worldX / 100000f),
-            35f, 101f, textPaint
-        )
+        canvas.drawText(String.format("TREK: %.2f / 20.74 km", worldX / 100000f), 35f, 101f, textPaint)
         if (totalSec >= 28800L) {
             textPaint.color = Color.parseColor("#00E676")
             textPaint.textSize = 22f

@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.BuildConfig
 import com.example.model.DayStats
 import com.example.model.RunPhase
 import com.example.ui.theme.BackroomsAmber
@@ -56,7 +57,6 @@ fun TerminalHud(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // TOP TERMINAL STATUS BANNER (Matching Image C mockup)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -80,13 +80,10 @@ fun TerminalHud(
                 fontFamily = FontFamily.Monospace
             )
         }
-
-        // STATS PANELS (Level, Streak, Almond Water, Shame Events)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Left Stats Column
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -96,21 +93,13 @@ fun TerminalHud(
             ) {
                 Text("CURRENT LEVEL:", color = BackroomsYellowDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                 Text("${dayStats.currentLevel} (The Lobby)", color = BackroomsYellow, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("FOCUS STREAK:", color = BackroomsYellowDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                 Text("${dayStats.streakDays} days", color = BackroomsYellow, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("ALMOND WATER:", color = BackroomsYellowDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                Text("${dayStats.almondWaterCans} canisters", color = BackroomsYellow, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("SHAME BREACHES:", color = BackroomsYellowDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                 Text("${dayStats.shameBreaches}", color = if (dayStats.shameBreaches > 0) BackroomsRedBreach else BackroomsYellow, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
             }
-
-            // Right Timer & Goal Column
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -121,7 +110,6 @@ fun TerminalHud(
                 Text("DAILY GOAL (8:00:00):", color = BackroomsYellowDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                 val totalBanked = dayStats.bankedSeconds + if (dayStats.runPhase == RunPhase.STUDY_ACTIVE) dayStats.currentBlockSeconds else 0L
                 Text(formatDuration(totalBanked), color = BackroomsYellow, fontSize = 15.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
-
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("CURRENT BLOCK:", color = BackroomsYellowDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                 val blockSec = dayStats.currentBlockSeconds
@@ -133,14 +121,8 @@ fun TerminalHud(
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
-
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("DAY LAUNCH WINDOW:", color = BackroomsYellowDim, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                Text(formatDuration(dayStats.dayLaunchSecondsLeft), color = BackroomsYellow, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
             }
         }
-
-        // ACTIVE GRACE ALERT NOTIFICATION
         AnimatedVisibility(visible = dayStats.isBlacklistBreachGraceActive) {
             Box(
                 modifier = Modifier
@@ -171,8 +153,6 @@ fun TerminalHud(
                 }
             }
         }
-
-        // KILL NOTICE
         AnimatedVisibility(visible = dayStats.runPhase == RunPhase.BREACH_KILLED) {
             Column(
                 modifier = Modifier
@@ -200,19 +180,21 @@ fun TerminalHud(
                     colors = ButtonDefaults.buttonColors(containerColor = BackroomsRedBreach),
                     shape = RoundedCornerShape(4.dp)
                 ) {
-                    Text("ACCEPT FAILURE & RESTART TODAY", color = Color.White, fontFamily = FontFamily.Monospace)
+                    Text("ACCEPT FAILURE (DAY TERMINATED)", color = Color.White, fontFamily = FontFamily.Monospace)
                 }
             }
         }
-
-        // PRIMARY INTERACTION CONTROLS
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val isStudying = dayStats.runPhase == RunPhase.STUDY_ACTIVE
+            val isTerminal = dayStats.runPhase == RunPhase.BREACH_KILLED ||
+                dayStats.runPhase == RunPhase.DAY_COMPLETED ||
+                dayStats.runPhase == RunPhase.DAY_OVER
             Button(
                 onClick = onToggleBlock,
+                enabled = !isTerminal,
                 modifier = Modifier.weight(1.5f),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isStudying) BackroomsAmber else BackroomsYellow
@@ -220,15 +202,18 @@ fun TerminalHud(
                 shape = RoundedCornerShape(4.dp)
             ) {
                 Text(
-                    text = if (isStudying) "STOP STUDY BLOCK" else "ENTER BACKROOMS (START)",
+                    text = when {
+                        isStudying -> "STOP STUDY BLOCK"
+                        isTerminal -> "RUN TERMINATED TODAY"
+                        else -> "ENTER BACKROOMS (START)"
+                    },
                     color = Color.Black,
                     fontWeight = FontWeight.Black,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp
                 )
             }
-
-            if (isStudying) {
+            if (isStudying && BuildConfig.DEBUG) {
                 OutlinedButton(
                     onClick = onFastForwardHour,
                     modifier = Modifier.weight(0.9f),
@@ -236,14 +221,8 @@ fun TerminalHud(
                     border = androidx.compose.foundation.BorderStroke(1.dp, BackroomsBorder),
                     shape = RoundedCornerShape(4.dp)
                 ) {
-                    Text(
-                        text = "+1H MAP",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("+1H MAP", fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                 }
-
                 OutlinedButton(
                     onClick = onTriggerBreach,
                     modifier = Modifier.weight(0.9f),
@@ -251,12 +230,7 @@ fun TerminalHud(
                     border = androidx.compose.foundation.BorderStroke(1.dp, BackroomsRedBreach),
                     shape = RoundedCornerShape(4.dp)
                 ) {
-                    Text(
-                        text = "TEST TRAP",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("TEST TRAP", fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                 }
             }
         }
