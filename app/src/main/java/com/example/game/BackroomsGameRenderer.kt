@@ -11,12 +11,12 @@ import com.example.model.DayStats
 import com.example.model.MascotState
 import com.example.model.RunPhase
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.sin
 
 class BackroomsGameRenderer(
     private val mascotSheetBitmap: Bitmap?,
-    private val wireframeBitmap: Bitmap?,
-    private val mapStripBitmap: Bitmap?
+    private val wireframeBitmap: Bitmap?
 ) {
     private val spriteSheet = MascotSpriteSheet(mascotSheetBitmap)
 
@@ -24,25 +24,70 @@ class BackroomsGameRenderer(
         color = Color.parseColor("#FFD54F")
         textSize = 24f
     }
-    private val redStrobePaint = Paint().apply {
-        color = Color.parseColor("#88FF1744")
-    }
-    private val staticPaint = Paint().apply {
-        color = Color.WHITE
-    }
-    private val pathLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#44FFD54F")
-        strokeWidth = 4f
+    private val redStrobePaint = Paint().apply { color = Color.parseColor("#88FF1744") }
+    private val staticPaint = Paint().apply { color = Color.WHITE }
+    private val bgPaint = Paint().apply { color = Color.parseColor("#070604") }
+    private val wallPaint = Paint().apply {
+        color = Color.parseColor("#0A0906")
         style = Paint.Style.STROKE
+        strokeWidth = 26f
     }
-    private val pathDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#88FFD54F")
-        style = Paint.Style.FILL
-    }
-    private val passedPathPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#9900E676")
+    private val wallInnerPaint = Paint().apply {
+        color = Color.parseColor("#6B6230")
+        style = Paint.Style.STROKE
         strokeWidth = 5f
+    }
+    private val roomWallPaint = Paint().apply {
+        color = Color.parseColor("#0A0906")
         style = Paint.Style.STROKE
+        strokeWidth = 18f
+    }
+    private val roomInnerPaint = Paint().apply {
+        color = Color.parseColor("#6B6230")
+        style = Paint.Style.STROKE
+        strokeWidth = 4f
+    }
+    private val lightPaint = Paint().apply { color = Color.parseColor("#E8F5C8") }
+    private val lightGlowPaint = Paint().apply { color = Color.parseColor("#22E8F5C8") }
+    private val columnPaint = Paint().apply { color = Color.parseColor("#15120A") }
+    private val columnEdgePaint = Paint().apply {
+        color = Color.parseColor("#6B6230")
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+    }
+    private val gatePaint = Paint().apply {
+        color = Color.parseColor("#55FFD54F")
+        style = Paint.Style.STROKE
+        strokeWidth = 6f
+    }
+    private val gatePanelPaint = Paint().apply { color = Color.parseColor("#DD18170F") }
+    private val gatePanelBorder = Paint().apply {
+        color = Color.parseColor("#FFD54F")
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+    }
+    private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#BBC7A500")
+        textSize = 40f
+        textAlign = Paint.Align.CENTER
+    }
+    private val floorPaints = Array(8) { i ->
+        Paint().apply { color = sectorFloor(i) }
+    }
+    private val roomFloorPaints = Array(8) { i ->
+        Paint().apply { color = sectorRoomFloor(i) }
+    }
+
+    private fun sectorFloor(sector: Int): Int {
+        val t = sector / 7f
+        fun l(a: Int, b: Int) = (a + (b - a) * t).toInt()
+        return Color.rgb(l(0x3A, 0x26), l(0x33, 0x1F), l(0x20, 0x11))
+    }
+
+    private fun sectorRoomFloor(sector: Int): Int {
+        val t = sector / 7f
+        fun l(a: Int, b: Int) = (a + (b - a) * t).toInt()
+        return Color.rgb(l(0x33, 0x20), l(0x2C, 0x1A), l(0x1B, 0x0E))
     }
 
     fun render(
@@ -52,282 +97,226 @@ class BackroomsGameRenderer(
         dayStats: DayStats,
         animTick: Long
     ) {
-        // Total study progress (8 hours = 28,800 seconds)
-        val totalBanked = dayStats.bankedSeconds + if (dayStats.runPhase == RunPhase.STUDY_ACTIVE) dayStats.currentBlockSeconds else 0L
-        val progressRatio = (totalBanked.toFloat() / 28800f).coerceIn(0f, 1f)
-
-        // Calculate mascot's current position and direction on the 2D Backrooms map
-        val placement = BackroomsMapData.getPositionAndDirection(progressRatio)
-
-        // 1. World Canvas Camera Transformation
-        // The 2D map is larger than the viewport. The camera smoothly follows the mascot
-        val mapPixelWidth = if (mapStripBitmap != null && !mapStripBitmap.isRecycled) {
-            viewHeight * 2.2f * (mapStripBitmap.width.toFloat() / mapStripBitmap.height.toFloat())
-        } else {
-            viewWidth * 3.0f
-        }
-        val mapPixelHeight = viewHeight * 2.2f
-
-        // Mascot absolute coordinate in map space
-        val mascotMapX = placement.mapNormX * mapPixelWidth
-        val mascotMapY = placement.mapNormY * mapPixelHeight
-
-        // Center camera around mascot, clamped within map boundaries
-        val cameraX = (mascotMapX - viewWidth / 2f).coerceIn(0f, (mapPixelWidth - viewWidth).coerceAtLeast(0f))
-        val cameraY = (mascotMapY - viewHeight / 2f).coerceIn(0f, (mapPixelHeight - viewHeight).coerceAtLeast(0f))
+        val level = dayStats.currentLevel
+        val totalSec = dayStats.bankedSeconds +
+            if (dayStats.runPhase == RunPhase.STUDY_ACTIVE) dayStats.currentBlockSeconds else 0L
+        val worldX = totalSec * BackroomsWorld.PX_PER_SEC
+        val centerY = BackroomsWorld.corridorCenterAt(worldX, level)
+        val scale = viewHeight / BackroomsWorld.WORLD_HEIGHT
+        val camLeft = worldX - viewWidth / (2f * scale)
 
         canvas.save()
-        // Translate view to camera coordinate
-        canvas.translate(-cameraX, -cameraY)
+        canvas.scale(scale, scale)
+        canvas.translate(-camLeft, 0f)
+        val left = camLeft - 200f
+        val right = camLeft + viewWidth / scale + 200f
 
-        // Draw 2D Top-Down/Tactical Backrooms Map Layout
-        draw2DBackroomsMap(canvas, mapPixelWidth, mapPixelHeight, progressRatio)
-
-        // Draw 2D Waypoint Navigation Paths & Hour Sector Markers
-        drawWaypointLines(canvas, mapPixelWidth, mapPixelHeight, progressRatio)
-
-        // Draw Exit Door / Escape Gate at the end of the map (Sector 8)
-        drawExitGate(canvas, mapPixelWidth, mapPixelHeight, progressRatio, animTick)
-
-        // Draw Player Mascot with complete Among Us waddle-bob animation & directional mirroring
-        drawAmongUsMascot(
-            canvas = canvas,
-            mascotMapX = mascotMapX,
-            mascotMapY = mascotMapY,
-            facingRight = placement.facingRight,
-            dayStats = dayStats,
-            animTick = animTick
-        )
-
-        // Draw The Wireframe Entity during active breach or death sequence
+        drawWorld(canvas, left, right, level)
+        drawGates(canvas, left, right, level)
+        drawExit(canvas, level, totalSec)
+        drawMascot(canvas, worldX, centerY, dayStats, animTick)
         if (dayStats.runPhase == RunPhase.BREACH_KILLED || dayStats.isBlacklistBreachGraceActive) {
-            drawWireframeLunge(
-                canvas = canvas,
-                mascotMapX = mascotMapX,
-                mascotMapY = mascotMapY,
-                dayStats = dayStats,
-                animTick = animTick
-            )
+            drawWireframeLunge(canvas, worldX, centerY, dayStats, animTick)
         }
-
         canvas.restore()
-
-        // Screen-space Overlays: CRT Scanlines, Strobe, and HUD Overlays
-        drawScreenOverlays(canvas, viewWidth, viewHeight, dayStats, animTick, totalBanked)
+        drawScreenOverlays(canvas, viewWidth, viewHeight, dayStats, animTick, totalSec, worldX)
     }
 
-    private fun draw2DBackroomsMap(
-        canvas: Canvas,
-        mapWidth: Float,
-        mapHeight: Float,
-        progressRatio: Float
-    ) {
-        // Base dark liminal floor
-        val basePaint = Paint().apply { color = Color.parseColor("#14130A") }
-        canvas.drawRect(0f, 0f, mapWidth, mapHeight, basePaint)
-
-        if (mapStripBitmap != null && !mapStripBitmap.isRecycled) {
-            val src = Rect(0, 0, mapStripBitmap.width, mapStripBitmap.height)
-            val dst = RectF(0f, 0f, mapWidth, mapHeight)
-            canvas.drawBitmap(mapStripBitmap, src, dst, null)
-        } else {
-            // High-detail 2D tactical room grid fallback
-            val roomPaint = Paint().apply { color = Color.parseColor("#262211") }
-            val borderPaint = Paint().apply {
-                color = Color.parseColor("#52471B")
-                style = Paint.Style.STROKE
-                strokeWidth = 8f
+    private fun drawWorld(canvas: Canvas, left: Float, right: Float, level: Int) {
+        canvas.drawRect(left, 0f, right, BackroomsWorld.WORLD_HEIGHT, bgPaint)
+        val half = BackroomsWorld.CORRIDOR_HALF
+        var x = left - (left % 32f)
+        while (x < right) {
+            val cy = BackroomsWorld.corridorCenterAt(x, level)
+            canvas.drawRect(x, cy - half, x + 34f, cy + half, floorPaints[BackroomsWorld.sectorOf(x)])
+            x += 32f
+        }
+        val topPath = Path()
+        val botPath = Path()
+        var sx = left
+        var first = true
+        while (sx <= right) {
+            val cy = BackroomsWorld.corridorCenterAt(sx, level)
+            if (first) {
+                topPath.moveTo(sx, cy - half)
+                botPath.moveTo(sx, cy + half)
+                first = false
+            } else {
+                topPath.lineTo(sx, cy - half)
+                botPath.lineTo(sx, cy + half)
             }
-            for (col in 0..8) {
-                val left = col * (mapWidth / 9f) + 15f
-                val right = (col + 1) * (mapWidth / 9f) - 15f
-                canvas.drawRect(left, 40f, right, mapHeight - 40f, roomPaint)
-                canvas.drawRect(left, 40f, right, mapHeight - 40f, borderPaint)
+            sx += 48f
+        }
+        canvas.drawPath(topPath, wallPaint)
+        canvas.drawPath(botPath, wallPaint)
+        canvas.drawPath(topPath, wallInnerPaint)
+        canvas.drawPath(botPath, wallInnerPaint)
+
+        val c0 = floor(left / BackroomsWorld.CHUNK).toInt()
+        val c1 = floor(right / BackroomsWorld.CHUNK).toInt()
+        for (c in c0..c1) {
+            val geo = BackroomsWorld.geometry(c, level)
+            for (room in geo.rooms) {
+                val sector = BackroomsWorld.sectorOf((room.left + room.right) / 2f)
+                val r = RectF(room.left, room.top, room.right, room.bottom)
+                canvas.drawRect(r, roomFloorPaints[sector])
+                canvas.drawRect(r, roomWallPaint)
+                canvas.drawRect(r, roomInnerPaint)
+                val doorSideY = if (room.above) r.bottom else r.top
+                canvas.drawRect(
+                    RectF(room.doorX - 60f, doorSideY - 14f, room.doorX + 60f, doorSideY + 14f),
+                    floorPaints[sector]
+                )
+                val lw = r.width() * 0.2f
+                canvas.drawRect(
+                    RectF(r.centerX() - lw / 2f, r.top + 12f, r.centerX() + lw / 2f, r.top + 22f),
+                    lightPaint
+                )
+            }
+            for (lx in geo.lightXs) {
+                val cy = BackroomsWorld.corridorCenterAt(lx, level)
+                canvas.drawRect(RectF(lx - 12f, cy - half - 44f, lx + 82f, cy - half + 6f), lightGlowPaint)
+                canvas.drawRect(RectF(lx, cy - half - 26f, lx + 70f, cy - half - 10f), lightPaint)
+            }
+            for (cx in geo.columns) {
+                val cy = BackroomsWorld.corridorCenterAt(cx, level)
+                val topCol = RectF(cx - 24f, cy - 122f, cx + 24f, cy - 74f)
+                val botCol = RectF(cx - 24f, cy + 74f, cx + 24f, cy + 122f)
+                canvas.drawRect(topCol, columnPaint)
+                canvas.drawRect(topCol, columnEdgePaint)
+                canvas.drawRect(botCol, columnPaint)
+                canvas.drawRect(botCol, columnEdgePaint)
             }
         }
     }
 
-    private fun drawWaypointLines(
-        canvas: Canvas,
-        mapWidth: Float,
-        mapHeight: Float,
-        progressRatio: Float
-    ) {
-        val waypoints = BackroomsMapData.waypoints
-        if (waypoints.size < 2) return
-
-        // 1. Draw entire planned path (dim dashed/dotted line)
-        val fullPath = Path()
-        for (i in waypoints.indices) {
-            val wx = waypoints[i].x * mapWidth
-            val wy = waypoints[i].y * mapHeight
-            if (i == 0) fullPath.moveTo(wx, wy) else fullPath.lineTo(wx, wy)
-            // Sector nodes
-            canvas.drawCircle(wx, wy, 8f, pathDotPaint)
-            if (i in listOf(0, 3, 6, 9, 12)) {
-                val hour = (i * 8 / 12).coerceIn(0, 8)
-                textPaint.textSize = 20f
-                textPaint.color = Color.parseColor("#88FFD54F")
-                canvas.drawText("${hour}H", wx - 14f, wy - 14f, textPaint)
-            }
+    private fun drawGates(canvas: Canvas, left: Float, right: Float, level: Int) {
+        val half = BackroomsWorld.CORRIDOR_HALF
+        for (s in 0..8) {
+            val gx = s * BackroomsWorld.WORLD_LENGTH / 8f
+            if (gx < left || gx > right) continue
+            val cy = BackroomsWorld.corridorCenterAt(gx, level)
+            canvas.drawLine(gx, cy - half - 240f, gx, cy + half + 240f, gatePaint)
+            val panel = RectF(gx - 170f, cy - half - 330f, gx + 170f, cy - half - 258f)
+            canvas.drawRect(panel, gatePanelPaint)
+            canvas.drawRect(panel, gatePanelBorder)
+            canvas.drawText(if (s == 8) "FIRE EXIT" else "HOUR $s", gx, cy - half - 278f, labelPaint)
         }
-        canvas.drawPath(fullPath, pathLinePaint)
     }
 
-    private fun drawExitGate(
-        canvas: Canvas,
-        mapWidth: Float,
-        mapHeight: Float,
-        progressRatio: Float,
-        animTick: Long
-    ) {
-        val exitWp = BackroomsMapData.waypoints.last()
-        val exitX = exitWp.x * mapWidth
-        val exitY = exitWp.y * mapHeight
-
-        // Exit Door Visual (Steel Red Industrial Fire Door with illuminated EXIT sign)
-        val doorPaint = Paint().apply {
-            color = if (progressRatio >= 1.0f) Color.parseColor("#00E676") else Color.parseColor("#B71C1C")
-        }
-        val doorRect = RectF(exitX - 25f, exitY - 50f, exitX + 25f, exitY + 10f)
-        canvas.drawRoundRect(doorRect, 6f, 6f, doorPaint)
-
-        // EXIT Sign with pulsing glow
-        val signPaint = Paint().apply {
-            color = if (progressRatio >= 1.0f) Color.parseColor("#69F0AE") else Color.parseColor("#FF5252")
-            style = Paint.Style.FILL
-        }
-        canvas.drawRect(exitX - 20f, exitY - 70f, exitX + 20f, exitY - 54f, signPaint)
-        textPaint.textSize = 14f
+    private fun drawExit(canvas: Canvas, level: Int, totalSec: Long) {
+        val half = BackroomsWorld.CORRIDOR_HALF
+        val ex = BackroomsWorld.WORLD_LENGTH
+        val cy = BackroomsWorld.corridorCenterAt(ex, level)
+        val open = totalSec >= BackroomsWorld.TOTAL_SECONDS
+        val doorPaint = Paint().apply { color = if (open) Color.parseColor("#00E676") else Color.parseColor("#B71C1C") }
+        canvas.drawRect(RectF(ex - 20f, cy - half, ex + 20f, cy + half), doorPaint)
+        val signPaint = Paint().apply { color = if (open) Color.parseColor("#69F0AE") else Color.parseColor("#FF5252") }
+        canvas.drawRect(RectF(ex - 90f, cy - half - 70f, ex + 90f, cy - half - 30f), signPaint)
+        textPaint.textSize = 26f
         textPaint.color = Color.BLACK
-        canvas.drawText("EXIT", exitX - 16f, exitY - 57f, textPaint)
+        canvas.drawText("EXIT", ex, cy - half - 40f, textPaint)
     }
 
-    private fun drawAmongUsMascot(
+    private fun drawMascot(
         canvas: Canvas,
-        mascotMapX: Float,
-        mascotMapY: Float,
-        facingRight: Boolean,
+        worldX: Float,
+        centerY: Float,
         dayStats: DayStats,
         animTick: Long
     ) {
         val state = dayStats.mascotState
         val isMoving = (state == MascotState.WALK || state == MascotState.RUN)
-
-        // Among Us movement dynamics:
-        // Pure sinusoidal vertical waddle bob: yBob = -A * |sin(2 * pi * f * t)|
-        val bobFreq = if (state == MascotState.RUN) 0.22f else 0.14f
-        val bobAmp = if (state == MascotState.RUN) 16f else 10f
+        val bobFreq = if (state == MascotState.RUN) 0.22f else 0.16f
+        val bobAmp = if (state == MascotState.RUN) 14f else 8f
         val bobY = if (isMoving) -abs(sin(animTick * bobFreq) * bobAmp) else 0f
-
-        // Panic horizontal jitter
         val jitterX = if (state == MascotState.PANIC || state == MascotState.GLITCH) {
             ((animTick % 5) - 2) * 6f
         } else 0f
+        val feetY = centerY + 60f
+        val currentX = worldX + jitterX
+        val currentY = feetY + bobY
 
-        val currentX = mascotMapX + jitterX
-        val currentY = mascotMapY + bobY
-
-        // Shadow beneath mascot
         val shadowPaint = Paint().apply {
             color = Color.argb(130, 0, 0, 0)
             style = Paint.Style.FILL
         }
-        val shadowW = if (isMoving) 70f - (bobY * 0.5f) else 80f
+        val shadowW = if (isMoving) 90f - (bobY * 0.5f) else 100f
         canvas.drawOval(
-            RectF(currentX - shadowW / 2f, mascotMapY - 4f, currentX + shadowW / 2f, mascotMapY + 14f),
+            RectF(currentX - shadowW / 2f, feetY - 6f, currentX + shadowW / 2f, feetY + 16f),
             shadowPaint
         )
 
-        val mascotDisplayW = 120f
-        val mascotDisplayH = 120f
-
+        val mascotDisplayH = 150f
         canvas.save()
-
-        // Directional mirroring (flip horizontally if facing left)
-        if (!facingRight) {
-            canvas.scale(-1f, 1f, currentX, currentY)
-        }
-
-        // Forward lean during RUN (Among Us sprint)
-        if (state == MascotState.RUN) {
-            canvas.rotate(8f, currentX, currentY)
-        }
-
-        // Crouch pose translation
-        if (state == MascotState.CROUCH) {
-            canvas.translate(0f, 12f)
-        }
-
-        val dstRect = RectF(
-            currentX - mascotDisplayW / 2f,
-            currentY - mascotDisplayH,
-            currentX + mascotDisplayW / 2f,
-            currentY
-        )
-
+        if (state == MascotState.RUN) canvas.rotate(6f, currentX, currentY)
+        if (state == MascotState.CROUCH) canvas.translate(0f, 14f)
         if (mascotSheetBitmap != null && !mascotSheetBitmap.isRecycled) {
             val srcRect = spriteSheet.getSourceRect(state, animTick)
-            val paint = Paint(Paint.FILTER_BITMAP_FLAG)
-            canvas.drawBitmap(mascotSheetBitmap, srcRect, dstRect, paint)
+            val srcH = srcRect.height().toFloat().coerceAtLeast(1f)
+            val aspect = srcRect.width().toFloat() / srcH
+            val dw = (mascotDisplayH * aspect).coerceIn(80f, 240f)
+            val dstRect = RectF(
+                currentX - dw / 2f,
+                currentY - mascotDisplayH,
+                currentX + dw / 2f,
+                currentY
+            )
+            canvas.drawBitmap(mascotSheetBitmap, srcRect, dstRect, Paint(Paint.FILTER_BITMAP_FLAG))
         } else {
-            // Clean vector backup
-            val bodyPaint = Paint().apply { color = Color.parseColor("#FFD54F") }
-            val visorPaint = Paint().apply { color = Color.parseColor("#15140D") }
-            canvas.drawRoundRect(dstRect, 22f, 22f, bodyPaint)
-            val vRect = RectF(dstRect.left + 24f, dstRect.top + 22f, dstRect.right - 14f, dstRect.top + 55f)
-            canvas.drawRoundRect(vRect, 10f, 10f, visorPaint)
+            val dw = 130f
+            val dstRect = RectF(
+                currentX - dw / 2f,
+                currentY - mascotDisplayH,
+                currentX + dw / 2f,
+                currentY
+            )
+            canvas.drawRoundRect(dstRect, 24f, 24f, Paint().apply { color = Color.parseColor("#FFD54F") })
+            canvas.drawRoundRect(
+                RectF(dstRect.left + 26f, dstRect.top + 24f, dstRect.right - 16f, dstRect.top + 60f),
+                10f, 10f,
+                Paint().apply { color = Color.parseColor("#15140D") }
+            )
         }
-
         canvas.restore()
 
-        // Player HUD Badge over mascot head
-        val badgePaint = Paint().apply {
-            color = Color.parseColor("#CC12110B")
-            style = Paint.Style.FILL
-        }
+        val badgePaint = Paint().apply { color = Color.parseColor("#CC12110B") }
         val badgeBorder = Paint().apply {
             color = Color.parseColor("#FFD54F")
             style = Paint.Style.STROKE
             strokeWidth = 2f
         }
-        val bW = 86f
-        val bH = 26f
-        val bRect = RectF(currentX - bW / 2f, currentY - mascotDisplayH - 32f, currentX + bW / 2f, currentY - mascotDisplayH - 6f)
+        val bRect = RectF(
+            currentX - 50f,
+            currentY - mascotDisplayH - 40f,
+            currentX + 50f,
+            currentY - mascotDisplayH - 10f
+        )
         canvas.drawRect(bRect, badgePaint)
         canvas.drawRect(bRect, badgeBorder)
-
-        textPaint.textSize = 16f
+        textPaint.textSize = 18f
         textPaint.color = Color.parseColor("#FFD54F")
-        canvas.drawText("PLAYER", currentX - 30f, currentY - mascotDisplayH - 12f, textPaint)
+        canvas.drawText("PLAYER", currentX, currentY - mascotDisplayH - 18f, textPaint)
     }
 
     private fun drawWireframeLunge(
         canvas: Canvas,
-        mascotMapX: Float,
-        mascotMapY: Float,
+        worldX: Float,
+        centerY: Float,
         dayStats: DayStats,
         animTick: Long
     ) {
         if (wireframeBitmap == null || wireframeBitmap.isRecycled) return
-
         val scale = if (dayStats.runPhase == RunPhase.BREACH_KILLED) {
             1.5f + ((animTick % 60) * 0.03f)
         } else {
             0.95f
         }
-
         val entityW = 240f * scale
         val entityH = 380f * scale
-        val entityX = mascotMapX + 160f - (if (dayStats.runPhase == RunPhase.BREACH_KILLED) (animTick % 30) * 8f else 0f)
-        val entityY = mascotMapY + 20f
-
-        val dst = RectF(
-            entityX - entityW / 2f,
-            entityY - entityH,
-            entityX + entityW / 2f,
-            entityY
-        )
+        val entityX = worldX + 180f - (if (dayStats.runPhase == RunPhase.BREACH_KILLED) (animTick % 30) * 8f else 0f)
+        val entityY = centerY + 80f
+        val dst = RectF(entityX - entityW / 2f, entityY - entityH, entityX + entityW / 2f, entityY)
         val src = Rect(0, 0, wireframeBitmap.width, wireframeBitmap.height)
         canvas.drawBitmap(wireframeBitmap, src, dst, null)
     }
@@ -338,16 +327,14 @@ class BackroomsGameRenderer(
         viewHeight: Float,
         dayStats: DayStats,
         animTick: Long,
-        totalBanked: Long
+        totalSec: Long,
+        worldX: Float
     ) {
-        // Red strobe when grace timer or kill is triggered
         if (dayStats.isBlacklistBreachGraceActive || dayStats.runPhase == RunPhase.BREACH_KILLED) {
             if ((animTick / 8) % 2 == 0L) {
                 canvas.drawRect(0f, 0f, viewWidth, viewHeight, redStrobePaint)
             }
         }
-
-        // CRT horizontal scanlines
         val scanPaint = Paint().apply {
             color = Color.argb(25, 0, 0, 0)
             strokeWidth = 2f
@@ -357,8 +344,6 @@ class BackroomsGameRenderer(
             canvas.drawLine(0f, y, viewWidth, y, scanPaint)
             y += 5f
         }
-
-        // CRT Glitch static dots on death or panic
         if (dayStats.mascotState == MascotState.GLITCH || dayStats.runPhase == RunPhase.BREACH_KILLED) {
             for (i in 0..100) {
                 val rx = (animTick * 41 + i * 89) % viewWidth.toInt()
@@ -366,29 +351,35 @@ class BackroomsGameRenderer(
                 canvas.drawCircle(rx.toFloat(), ry.toFloat(), 2.5f, staticPaint)
             }
         }
-
-        // Current Sector Badge in top-left
-        val sector = (totalBanked / 3600).coerceIn(0, 8)
-        val sectorBadgePaint = Paint().apply {
-            color = Color.parseColor("#DD18170F")
-            style = Paint.Style.FILL
-        }
+        val sector = (totalSec / 3600).coerceIn(0, 8)
+        val sectorBadgePaint = Paint().apply { color = Color.parseColor("#DD18170F") }
         val sectorBorderPaint = Paint().apply {
             color = Color.parseColor("#FFD54F")
             style = Paint.Style.STROKE
             strokeWidth = 2f
         }
-        val sRect = RectF(20f, 20f, 380f, 65f)
+        val sRect = RectF(20f, 20f, 430f, 65f)
         canvas.drawRect(sRect, sectorBadgePaint)
         canvas.drawRect(sRect, sectorBorderPaint)
-
         textPaint.textSize = 20f
         textPaint.color = Color.parseColor("#FFD54F")
-        canvas.drawText("LEVEL 0: SECTOR 0$sector / 08", 35f, 48f, textPaint)
-
-        if (totalBanked >= 28800L) {
+        textPaint.textAlign = Paint.Align.LEFT
+        canvas.drawText(
+            "LEVEL ${dayStats.currentLevel}: SECTOR 0$sector / 08",
+            35f, 48f, textPaint
+        )
+        val tRect = RectF(20f, 75f, 430f, 115f)
+        canvas.drawRect(tRect, sectorBadgePaint)
+        canvas.drawRect(tRect, sectorBorderPaint)
+        textPaint.textSize = 17f
+        canvas.drawText(
+            String.format("TREK: %.2f / 20.74 km", worldX / 100000f),
+            35f, 101f, textPaint
+        )
+        if (totalSec >= 28800L) {
             textPaint.color = Color.parseColor("#00E676")
-            canvas.drawText("FIRE EXIT REACHED - RUN COMPLETE", 35f, 95f, textPaint)
+            textPaint.textSize = 22f
+            canvas.drawText("FIRE EXIT REACHED - RUN COMPLETE", 35f, 150f, textPaint)
         }
     }
 }

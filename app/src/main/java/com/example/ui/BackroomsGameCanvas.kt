@@ -24,8 +24,6 @@ fun BackroomsGameCanvas(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-
-    // Load visual assets (mascot sheet, wireframe, hallway)
     val mascotSheetBitmap = remember {
         try {
             BitmapFactory.decodeResource(context.resources, R.drawable.mascot_spritesheet)
@@ -40,31 +38,19 @@ fun BackroomsGameCanvas(
             null
         }
     }
-    val mapStripBitmap = remember {
-        try {
-            BitmapFactory.decodeResource(context.resources, R.drawable.backrooms_map_strip)
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    val renderer = remember(mascotSheetBitmap, wireframeBitmap, mapStripBitmap) {
+    val renderer = remember(mascotSheetBitmap, wireframeBitmap) {
         BackroomsGameRenderer(
             mascotSheetBitmap = mascotSheetBitmap,
-            wireframeBitmap = wireframeBitmap,
-            mapStripBitmap = mapStripBitmap
+            wireframeBitmap = wireframeBitmap
         )
     }
-
-    // 60 FPS Animation Tick Loop
     var animTick by remember { mutableLongStateOf(0L) }
     LaunchedEffect(Unit) {
         while (isActive) {
             animTick++
-            delay(16L) // ~60fps fixed timestep
+            delay(16L)
         }
     }
-
     Canvas(modifier = modifier.fillMaxSize()) {
         val nativeCanvas = drawContext.canvas.nativeCanvas
         renderer.render(
